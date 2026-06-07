@@ -3,10 +3,11 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output="${repo_root}/jsonnet/version.bzl"
+temp_output="${output}.tmp"
 
-go_jsonnet_version="${GO_JSONNET_VERSION:-0.22.0}"
-jrsonnet_version="${JRSONNET_VERSION:-0.5.0-pre98}"
-jsonnet_version="${JSONNET_VERSION:-0.22.0}"
+go_jsonnet_versions=('0.22.0' '0.21.0' '0.20.0' '0.19.1')
+jrsonnet_versions=('0.5.0-pre98')
+github_request_delay_seconds="${GITHUB_REQUEST_DELAY_SECONDS:-3}"
 
 require() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -15,18 +16,41 @@ require() {
   fi
 }
 
+log() {
+  printf 'update_toolchain_versions: %s\n' "$*" >&2
+}
+
+fetch_url() {
+  local description="$1"
+  local url="$2"
+  log "fetching ${description} after ${github_request_delay_seconds}s delay"
+  sleep "$github_request_delay_seconds"
+  curl -fsSL "$url"
+}
+
 github_api() {
   local repo="$1"
   local version="$2"
-  curl -fsSL "https://api.github.com/repos/${repo}/releases/tags/v${version}"
+  fetch_url "${repo} release v${version}" "https://api.github.com/repos/${repo}/releases/tags/v${version}"
 }
 
-starlark_map() {
-  local name="$1"
+github_release_download() {
+  local repo="$1"
   local version="$2"
-  local json="$3"
+  local asset="$3"
+  printf 'https://github.com/%s/releases/download/v%s/%s' "$repo" "$version" "$asset"
+}
+
+starlark_map_start() {
+  local name="$1"
 
   printf '%s = {\n' "$name"
+}
+
+starlark_map_version() {
+  local version="$1"
+  local json="$2"
+
   printf '    "%s": {\n' "$version"
   jq -r '
     to_entries[] |
@@ -38,78 +62,112 @@ starlark_map() {
     "        },"
   ' <<<"${json}"
   printf '    },\n'
+}
+
+starlark_map_end() {
   printf '}\n\n'
 }
 
 go_jsonnet_assets() {
-  github_api "google/go-jsonnet" "$go_jsonnet_version" | jq --arg version "$go_jsonnet_version" '
-    def digest: .digest | sub("^sha256:"; "");
-    reduce .assets[] as $asset ({};
-      if $asset.name == "go-jsonnet_\($version)_darwin_amd64.tar.gz" then
-        .darwin_amd64 = {archive: true, binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      elif $asset.name == "go-jsonnet_\($version)_darwin_arm64.tar.gz" then
-        .darwin_arm64 = {archive: true, binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      elif $asset.name == "go-jsonnet_\($version)_linux_amd64.tar.gz" then
-        .linux_amd64 = {archive: true, binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      elif $asset.name == "go-jsonnet_\($version)_linux_arm64.tar.gz" then
-        .linux_arm64 = {archive: true, binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      else
-        .
-      end
-    )
-  '
+  local version="$1"
+  local checksums
+  checksums="$(fetch_url "google/go-jsonnet checksums for v${version}" "$(github_release_download "google/go-jsonnet" "$version" "checksums.txt")")"
+  local result="{}"
+
+  local platforms=(
+    "darwin_amd64:go-jsonnet_${version}_darwin_amd64.tar.gz:go-jsonnet_Darwin_x86_64.tar.gz:go-jsonnet_${version}_Darwin_x86_64.tar.gz"
+    "darwin_arm64:go-jsonnet_${version}_darwin_arm64.tar.gz:go-jsonnet_Darwin_arm64.tar.gz:go-jsonnet_${version}_Darwin_arm64.tar.gz"
+    "linux_amd64:go-jsonnet_${version}_linux_amd64.tar.gz:go-jsonnet_Linux_x86_64.tar.gz:go-jsonnet_${version}_Linux_x86_64.tar.gz"
+    "linux_arm64:go-jsonnet_${version}_linux_arm64.tar.gz:go-jsonnet_Linux_arm64.tar.gz:go-jsonnet_${version}_Linux_arm64.tar.gz"
+  )
+
+  for entry in "${platforms[@]}"; do
+    IFS=: read -r platform modern old unversioned <<<"$entry"
+    local asset=""
+    local sha256=""
+    for candidate in "$modern" "$old" "$unversioned"; do
+      if grep -F "  ${candidate}" <<<"$checksums" >/dev/null; then
+        asset="$candidate"
+        read -r sha256 _ <<<"$(grep -F "  ${candidate}" <<<"$checksums")"
+        break
+      fi
+    done
+    if [[ -z "$asset" ]]; then
+      continue
+    fi
+    result="$(jq \
+      --arg platform "$platform" \
+      --arg sha256 "$sha256" \
+      --arg url "$(github_release_download "google/go-jsonnet" "$version" "$asset")" \
+      '.[$platform] = {archive: true, binary: "jsonnet", sha256: $sha256, url: $url}' \
+      <<<"$result")"
+  done
+
+  jq -S . <<<"$result"
 }
 
 jrsonnet_assets() {
-  github_api "deltarocks/jrsonnet" "$jrsonnet_version" | jq '
-    def digest: .digest | sub("^sha256:"; "");
-    reduce .assets[] as $asset ({};
-      if $asset.name == "jrsonnet-aarch64-darwin" then
-        .["aarch64-darwin"] = {binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      elif $asset.name == "jrsonnet-aarch64-linux-musl" then
-        .["aarch64-linux-musl"] = {binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      elif $asset.name == "jrsonnet-x86_64-linux-musl" then
-        .["x86_64-linux-musl"] = {binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      else
-        .
-      end
-    )
-  '
-}
+  local version="$1"
+  local release
+  release="$(github_api "deltarocks/jrsonnet" "$version")"
+  local result="{}"
 
-jsonnet_assets() {
-  github_api "google/jsonnet" "$jsonnet_version" | jq --arg version "$jsonnet_version" '
-    def digest: .digest | sub("^sha256:"; "");
-    reduce .assets[] as $asset ({};
-      if $asset.name == "jsonnet_\($version)_darwin_amd64.tar.gz" or $asset.name == "jsonnet-\($version)-darwin-amd64.tar.gz" then
-        .darwin_amd64 = {archive: true, binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      elif $asset.name == "jsonnet_\($version)_darwin_arm64.tar.gz" or $asset.name == "jsonnet-\($version)-darwin-arm64.tar.gz" then
-        .darwin_arm64 = {archive: true, binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      elif $asset.name == "jsonnet_\($version)_linux_amd64.tar.gz" or $asset.name == "jsonnet-\($version)-linux-amd64.tar.gz" then
-        .linux_amd64 = {archive: true, binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      elif $asset.name == "jsonnet_\($version)_linux_arm64.tar.gz" or $asset.name == "jsonnet-\($version)-linux-arm64.tar.gz" then
-        .linux_arm64 = {archive: true, binary: "jsonnet", sha256: ($asset | digest), url: $asset.browser_download_url}
-      else
-        .
-      end
-    )
-  '
+  while IFS=$'\t' read -r asset_name digest url; do
+    local platform=""
+    case "$asset_name" in
+      jrsonnet-aarch64-darwin|jrsonnet-darwin-aarch64)
+        platform="aarch64-darwin"
+        ;;
+      jrsonnet-aarch64-linux-musl|jrsonnet-linux-aarch64)
+        platform="aarch64-linux-musl"
+        ;;
+      jrsonnet-x86_64-linux-musl|jrsonnet-linux-amd64)
+        platform="x86_64-linux-musl"
+        ;;
+    esac
+    if [[ -z "$platform" ]]; then
+      continue
+    fi
+
+    local sha256="${digest#sha256:}"
+    if [[ -z "$sha256" || "$sha256" == "null" || "$sha256" == "-" ]]; then
+      log "skipping jrsonnet ${asset_name}; no release SHA256 digest available"
+      continue
+    fi
+
+    result="$(jq \
+      --arg platform "$platform" \
+      --arg sha256 "$sha256" \
+      --arg url "$url" \
+      '.[$platform] = {binary: "jsonnet", sha256: $sha256, url: $url}' \
+      <<<"$result")"
+  done < <(jq -r '.assets[] | select(.name | endswith(".sha256") | not) | [.name, (.digest // "-"), .browser_download_url] | @tsv' <<<"$release")
+
+  jq -S . <<<"$result"
 }
 
 require curl
 require jq
 
-go_jsonnet_json="$(go_jsonnet_assets)"
-jrsonnet_json="$(jrsonnet_assets)"
-jsonnet_json="$(jsonnet_assets)"
-
 {
   printf '# Generated by tools/update_toolchain_versions.sh.\n'
   printf '# Edit the generator inputs rather than this file.\n\n'
-  printf 'GO_JSONNET_DEFAULT_VERSION = "%s"\n' "$go_jsonnet_version"
-  printf 'JRSONNET_DEFAULT_VERSION = "%s"\n' "$jrsonnet_version"
-  printf 'JSONNET_DEFAULT_VERSION = "%s"\n\n' "$jsonnet_version"
-  starlark_map "GO_JSONNET_TOOLCHAINS" "$go_jsonnet_version" "$go_jsonnet_json"
-  starlark_map "JRSONNET_TOOLCHAINS" "$jrsonnet_version" "$jrsonnet_json"
-  starlark_map "JSONNET_TOOLCHAINS" "$jsonnet_version" "$jsonnet_json"
-} >"$output"
+  printf 'GO_JSONNET_DEFAULT_VERSION = "%s"\n' "${go_jsonnet_versions[0]}"
+  printf 'JRSONNET_DEFAULT_VERSION = "%s"\n\n' "${jrsonnet_versions[0]}"
+
+  starlark_map_start "GO_JSONNET_TOOLCHAINS"
+  for version in "${go_jsonnet_versions[@]}"; do
+    log "generating go-jsonnet metadata for v${version}"
+    starlark_map_version "$version" "$(go_jsonnet_assets "$version")"
+  done
+  starlark_map_end
+
+  starlark_map_start "JRSONNET_TOOLCHAINS"
+  for version in "${jrsonnet_versions[@]}"; do
+    log "generating jrsonnet metadata for v${version}"
+    starlark_map_version "$version" "$(jrsonnet_assets "$version")"
+  done
+  starlark_map_end
+} >"$temp_output"
+
+mv "$temp_output" "$output"

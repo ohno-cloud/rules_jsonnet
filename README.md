@@ -47,12 +47,8 @@ The extension downloads prebuilt compilers. Supported compilers are:
 | ---------------- | ---------------- | --------------- |
 | [go-jsonnet](https://github.com/google/go-jsonnet) | `go` | `0.22.0` |
 | [jrsonnet](https://github.com/CertainLach/jrsonnet) | `jrsonnet` | `0.5.0-pre98` |
-| [jsonnet](https://github.com/google/jsonnet) | `jsonnet` | `0.22.0` |
 
 For jrsonnet, Linux downloads use the musl builds for portability.
-The C++ jsonnet compiler is supported when upstream publishes matching
-standalone binary release assets; current recent releases only publish source
-archives.
 
 You can also register a custom source-built or locally-provided compiler by
 creating a `jsonnet_toolchain` target and registering it with
@@ -60,8 +56,7 @@ creating a `jsonnet_toolchain` target and registering it with
 
 The version metadata used by the extension is generated in `jsonnet/version.bzl`.
 Run `tools/update_toolchain_versions.sh` to refresh the known download URLs and
-SHA256s. Override versions with `GO_JSONNET_VERSION`, `JRSONNET_VERSION`, or
-`JSONNET_VERSION` when running the script.
+SHA256s.
 
 ## Rule usage
 

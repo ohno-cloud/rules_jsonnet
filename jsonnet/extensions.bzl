@@ -4,8 +4,6 @@ load(
     "GO_JSONNET_TOOLCHAINS",
     "JRSONNET_DEFAULT_VERSION",
     "JRSONNET_TOOLCHAINS",
-    "JSONNET_DEFAULT_VERSION",
-    "JSONNET_TOOLCHAINS",
 )
 
 _GO_PLATFORM_INFO = {
@@ -19,13 +17,6 @@ _JRSONNET_PLATFORM_INFO = {
     "aarch64-darwin": struct(os = "osx", cpu = "aarch64"),
     "aarch64-linux-musl": struct(os = "linux", cpu = "aarch64"),
     "x86_64-linux-musl": struct(os = "linux", cpu = "x86_64"),
-}
-
-_JSONNET_PLATFORM_INFO = {
-    "darwin_amd64": struct(os = "osx", cpu = "x86_64"),
-    "darwin_arm64": struct(os = "osx", cpu = "aarch64"),
-    "linux_amd64": struct(os = "linux", cpu = "x86_64"),
-    "linux_arm64": struct(os = "linux", cpu = "aarch64"),
 }
 
 def _jsonnet_impl(module_ctx):
@@ -160,28 +151,14 @@ def _jrsonnet_toolchains(ctx):
         manifest_file_support = False,
     )
 
-def _jsonnet_toolchains(ctx):
-    return _downloaded_toolchains(
-        ctx = ctx,
-        compiler_name = "jsonnet",
-        version = ctx.attr.version,
-        toolchains = JSONNET_TOOLCHAINS,
-        platform_info = _JSONNET_PLATFORM_INFO,
-        default_version = JSONNET_DEFAULT_VERSION,
-        create_directory_flags = [],
-        manifest_file_support = True,
-    )
-
 def _downloaded_jsonnet_toolchains_repo_impl(ctx):
     compiler = ctx.attr.compiler
     if compiler == "go":
         toolchains = _go_jsonnet_toolchains(ctx)
     elif compiler == "jrsonnet":
         toolchains = _jrsonnet_toolchains(ctx)
-    elif compiler == "jsonnet":
-        toolchains = _jsonnet_toolchains(ctx)
     else:
-        fail("Unsupported Jsonnet compiler '%s'. Supported compilers: go, jrsonnet, jsonnet" % compiler)
+        fail("Unsupported Jsonnet compiler '%s'. Supported compilers: go, jrsonnet" % compiler)
 
     ctx.file(
         "BUILD.bazel",
