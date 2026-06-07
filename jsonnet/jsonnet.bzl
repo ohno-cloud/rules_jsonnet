@@ -319,20 +319,26 @@ def _quote(s):
 
 def _stamp_resolve(ctx, string, output):
     stamps = [ctx.info_file, ctx.version_file]
-    stamp_args = [
-        "--stamp-info-file=%s" % sf.path
-        for sf in stamps
+    command = [
+        "set -eu",
+        "format=%s" % shell.quote(string),
+        "while IFS=' ' read -r key value; do",
+        "  if [ -n \"${key}\" ]; then",
+        "    format=${format//\\{${key}\\}/${value}}",
+        "  fi",
+        "done < %s" % shell.quote(ctx.info_file.path),
+        "while IFS=' ' read -r key value; do",
+        "  if [ -n \"${key}\" ]; then",
+        "    format=${format//\\{${key}\\}/${value}}",
+        "  fi",
+        "done < %s" % shell.quote(ctx.version_file.path),
+        "printf '%%s' \"${format}\" > %s" % shell.quote(output.path),
     ]
-    ctx.actions.run(
-        executable = ctx.executable._stamper,
-        arguments = [
-            "--format=%s" % string,
-            "--output=%s" % output.path,
-        ] + stamp_args,
+    ctx.actions.run_shell(
         inputs = stamps,
-        tools = [ctx.executable._stamper],
         outputs = [output],
         mnemonic = "Stamp",
+        command = "\n".join(command),
     )
 
 def _make_resolve(ctx, val):
@@ -870,12 +876,6 @@ manifest the output file(s) as plain text instead of JSON.
     ),
     "vars": attr.string_dict(
         doc = "Deprecated (use 'ext_strs').",
-    ),
-    "_stamper": attr.label(
-        default = Label("//jsonnet:stamper"),
-        cfg = "exec",
-        executable = True,
-        allow_files = True,
     ),
 }
 
