@@ -15,25 +15,14 @@ tasks:
     name: examples
     platform: ${{ platform }}
     working_directory: examples
-    test_flags:
-    - "--extra_toolchains=@rules_jsonnet//jsonnet:go_jsonnet_toolchain"
     test_targets:
     - //...
 
-  examples_cpp:
+  examples_jrsonnet:
     name: examples
-    platform: ${{ platform }}
+    platform: ubuntu2204
     working_directory: examples
     test_flags:
-    - "--extra_toolchains=@rules_jsonnet//jsonnet:cpp_jsonnet_toolchain"
-    test_targets:
-    - //...
-
-  examples_rust:
-    name: examples
-    platform: ${{ platform }}
-    working_directory: examples
-    test_flags:
-    - "--extra_toolchains=@rules_jsonnet//jsonnet:rust_jsonnet_toolchain"
+    - "--extra_toolchains=@jrsonnet_toolchains//:all"
     test_targets:
     - //...

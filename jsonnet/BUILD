@@ -1,4 +1,3 @@
-load(":toolchain.bzl", "jsonnet_toolchain")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
@@ -35,46 +34,7 @@ py_binary(
     visibility = ["//visibility:public"],
 )
 
-toolchain_type(name = "toolchain_type")
-
-jsonnet_toolchain(
-    name = "rust_jsonnet",
-    compiler = "@crates_jsonnet//:jrsonnet__jrsonnet",
-    create_directory_flags = ["-c"],
-    manifest_file_support = False,
-)
-
-jsonnet_toolchain(
-    name = "go_jsonnet",
-    compiler = "@jsonnet_go//cmd/jsonnet",
-    create_directory_flags = ["-c"],
-    manifest_file_support = True,
-)
-
-jsonnet_toolchain(
-    name = "cpp_jsonnet",
-    compiler = "@jsonnet//cmd:jsonnet",
-    create_directory_flags = [],
-    manifest_file_support = True,
-)
-
-toolchain(
-    name = "rust_jsonnet_toolchain",
-    toolchain = ":rust_jsonnet",
-    toolchain_type = ":toolchain_type",
-    visibility = ["//visibility:public"],
-)
-
-toolchain(
-    name = "go_jsonnet_toolchain",
-    toolchain = ":go_jsonnet",
-    toolchain_type = ":toolchain_type",
-    visibility = ["//visibility:public"],
-)
-
-toolchain(
-    name = "cpp_jsonnet_toolchain",
-    toolchain = ":cpp_jsonnet",
-    toolchain_type = ":toolchain_type",
+toolchain_type(
+    name = "toolchain_type",
     visibility = ["//visibility:public"],
 )

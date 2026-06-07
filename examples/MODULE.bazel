@@ -10,7 +10,19 @@ local_path_override(
 )
 
 jsonnet = use_extension("@rules_jsonnet//jsonnet:extensions.bzl", "jsonnet")
-jsonnet.compiler(name = "go")
+jsonnet.toolchain(
+    name = "jsonnet_go",
+    compiler = "go",
+    version = "0.22.0",
+)
+jsonnet.toolchain(
+    name = "jrsonnet",
+    compiler = "jrsonnet",
+    version = "0.5.0-pre98",
+)
+use_repo(jsonnet, "jrsonnet_toolchains", "jsonnet_go_toolchains")
+
+register_toolchains("@jsonnet_go_toolchains//:all")
 
 bazel_dep(name = "other_module", version = "0.0.0")
 local_path_override(

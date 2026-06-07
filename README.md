@@ -22,37 +22,46 @@ These are build rules for working with [Jsonnet][jsonnet] files with Bazel.
 To use the Jsonnet rules as part of your Bazel project, please follow the
 instructions on [the releases page](https://github.com/bazelbuild/rules_jsonnet/releases).
 
-## Jsonnet Compiler Selection
+## Jsonnet Toolchains
 
-By default for Bzlmod, Bazel will use the [Go
-compiler](https://github.com/google/go-jsonnet). Note that the
-primary development focus of the Jsonnet project is now with the Go compiler.
-This repository's support for using the C++ compiler is deprecated, and may be
-removed in a future release.
+This ruleset does not build or register a Jsonnet compiler by default. Register
+one in your root module with the `jsonnet.toolchain` extension:
 
-To use [the
-C++](https://github.com/google/jsonnet) or
-[Rust](https://github.com/CertainLach/jrsonnet) compiler of Jsonnet instead,
-register a different compiler:
+```starlark
+bazel_dep(name = "rules_jsonnet", version = "...")
 
-| Jsonnet compiler | MODULE.bazel directive            |
-| ---------------- | --------------------------------- |
-| Go               | `jsonnet.compiler(name = "go")`   |
-| cpp              | `jsonnet.compiler(name = "cpp")`  |
-| Rust             | `jsonnet.compiler(name = "rust")` |
+jsonnet = use_extension("@rules_jsonnet//jsonnet:extensions.bzl", "jsonnet")
+jsonnet.toolchain(
+    name = "jsonnet_go",
+    compiler = "go",
+    version = "0.22.0",
+)
+use_repo(jsonnet, "jsonnet_go_toolchains")
 
-### CLI
-
-Use the `--extra_toolchains` flag to pass the preferred toolchain to the bazel
-invocation:
-
-```bash
-bazel build //... --extra_toolchains=@rules_jsonnet//jsonnet:cpp_jsonnet_toolchain
-
-bazel test //... --extra_toolchains=@rules_jsonnet//jsonnet:rust_jsonnet_toolchain
-
-bazel run //... --extra_toolchains=@rules_jsonnet//jsonnet:go_jsonnet_toolchain
+register_toolchains("@jsonnet_go_toolchains//:all")
 ```
+
+The extension downloads prebuilt compilers. Supported compilers are:
+
+| Jsonnet compiler | `compiler` value | Default version |
+| ---------------- | ---------------- | --------------- |
+| [go-jsonnet](https://github.com/google/go-jsonnet) | `go` | `0.22.0` |
+| [jrsonnet](https://github.com/CertainLach/jrsonnet) | `jrsonnet` | `0.5.0-pre98` |
+| [jsonnet](https://github.com/google/jsonnet) | `jsonnet` | `0.22.0` |
+
+For jrsonnet, Linux downloads use the musl builds for portability.
+The C++ jsonnet compiler is supported when upstream publishes matching
+standalone binary release assets; current recent releases only publish source
+archives.
+
+You can also register a custom source-built or locally-provided compiler by
+creating a `jsonnet_toolchain` target and registering it with
+`register_toolchains`.
+
+The version metadata used by the extension is generated in `jsonnet/version.bzl`.
+Run `tools/update_toolchain_versions.sh` to refresh the known download URLs and
+SHA256s. Override versions with `GO_JSONNET_VERSION`, `JRSONNET_VERSION`, or
+`JSONNET_VERSION` when running the script.
 
 ## Rule usage
 

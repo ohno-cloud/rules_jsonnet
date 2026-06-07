@@ -26,6 +26,7 @@ jsonnet_toolchain = rule(
     attrs = {
         "compiler": attr.label(
             executable = True,
+            allow_files = True,
             cfg = "exec",
         ),
         "create_directory_flags": attr.string_list(
